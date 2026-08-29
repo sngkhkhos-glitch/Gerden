@@ -1,0 +1,91 @@
+-- Greedy Growers - Auto Harvest Before Lightning [Ready to Paste]
+-- by นายเอง - ปรับ % เก็บได้ตรง CONFIG
+
+-- [[ CONFIG ]]
+local HARVEST_AT = 0.92 -- 92% ก็เก็บเลย ไม่รอ 100%
+local SAVE_IF_LIGHTNING_AT = 0.60 -- ถ้าฟ้าจะผ่า โต 60% ก็ต้องเก็บแล้ว
+local CHECK_DELAY = 0.25 -- เช็คทุก 0.25 วิ
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local player = Players.LocalPlayer
+
+-- หา Plot ของเรา (ชื่อส่วนใหญ่จะเป็น "Plot" หรือ ชื่อเรา)
+local function getMyPlot()
+    -- ลองหา 2 แบบ
+    local plot = workspace:FindFirstChild(player.Name.."'s Plot")
+    if plot then return plot end
+    -- ถ้าไม่มี ให้ลองหาอันที่มี Owner เป็นเรา
+    for _, v in pairs(workspace:GetChildren()) do
+        if v:GetAttribute("Owner") == player.Name then
+            return v
+        end
+    end
+    return workspace:FindFirstChild("Plots") and workspace.Plots:FindFirstChild(player.Name)
+end
+
+-- เช็คว่าฟ้ากำลังจะผ่าไหม (นายต้องไปดูชื่อจริงใน ReplicatedStorage อีกที)
+local function isLightningComing()
+    local warn1 = ReplicatedStorage:FindFirstChild("LightningWarning")
+    if warn1 and warn1.Value == true then return true end
+    
+    local warn2 = workspace:FindFirstChild("LightningWarning")
+    if warn2 and warn2.Value == true then return true end
+
+    -- บางแมพใช้เป็น BoolValue ชื่อ Storm
+    local storm = ReplicatedStorage:FindFirstChild("Storm")
+    if storm and storm.Value == true then return true end
+    
+    return false
+end
+
+-- ควรเก็บหรือยัง
+local function shouldHarvest(tree)
+    if not tree:GetAttribute("Growth") then return false end
+    local growth = tree:GetAttribute("Growth")
+    local lightning = isLightningComing()
+
+    if lightning and growth >= SAVE_IF_LIGHTNING_AT then
+        return true, "ฟ้าจะผ่า! รีบเก็บ!"
+    end
+
+    if growth >= HARVEST_AT then
+        return true, "โตพอแล้ว เก็บเลย"
+    end
+
+    return false
+end
+
+-- เริ่มลูป Auto Farm
+print("🌱 Auto Save Before Lightning เริ่มทำงาน...")
+
+while true do
+    task.wait(CHECK_DELAY)
+    pcall(function()
+        local myPlot = getMyPlot()
+        if not myPlot then return end
+
+        for _, tree in pairs(myPlot:GetChildren()) do
+            -- ข้ามถ้าไม่ใช่ต้นไม้
+            if not tree:IsA("Model") then continue end
+            
+            local harvest, reason = shouldHarvest(tree)
+            if harvest then
+                print("⚡ "..reason.." -> "..tree.Name)
+                
+                -- === จุดสำคัญ: สั่งเก็บ ===
+                -- นายต้องไปเปิด ReplicatedStorage ดูว่าชื่อ Remote อะไร
+                -- ส่วนใหญ่จะชื่อ Harvest, HarvestTree, Collect
+                -- ตัวอย่าง:
+                local remote = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("Harvest")
+                if not remote then
+                    remote = ReplicatedStorage:FindFirstChild("HarvestEvent")
+                end
+                
+                if remote then
+                    remote:FireServer(tree) -- ยิงไปเซิร์ฟเวอร์เพื่อเก็บ
+                end
+            end
+        end
+    end)
+end
